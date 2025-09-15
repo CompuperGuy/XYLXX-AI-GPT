@@ -2,6 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
+/* Your provided firebaseConfig */
 const firebaseConfig = {
   apiKey: "AIzaSyALx3RDkGf27Nv-mcatszH8Dx5wuPA1jF0",
   authDomain: "ai-bot-f9965.firebaseapp.com",
@@ -12,15 +13,32 @@ const firebaseConfig = {
   measurementId: "G-120MFDQRNJ"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+let db = null;
 
-export async function saveChat(user, bot) {
-  try {
-    await addDoc(collection(db, "chats"), {
-      user, bot, timestamp: Date.now()
-    });
-  } catch(e) {
-    console.error("Error saving chat:", e);
+export async function initFirebase(){
+  try{
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    console.log('Firebase init done');
+  }catch(e){
+    console.warn('Firebase init error', e);
   }
+}
+
+export async function saveChatEvent(obj){
+  if(!db) return;
+  try{
+    await addDoc(collection(db, 'chats'), {
+      user: obj.user, bot: obj.bot, turnId: obj.turnId, ts: obj.ts || Date.now()
+    });
+  }catch(e){ console.warn('saveChatEvent error', e); }
+}
+
+export async function saveRewardEvent(obj){
+  if(!db) return;
+  try{
+    await addDoc(collection(db, 'rewards'), {
+      turnId: obj.turnId, reward: obj.reward, ts: obj.ts || Date.now()
+    });
+  }catch(e){ console.warn('saveRewardEvent error', e); }
 }
