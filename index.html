@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>XYLXX GPT-1</title>
+  <style>
+    body {
+      margin: 0; background: #0d0d0d; color: #fff;
+      font-family: sans-serif; display: flex;
+      justify-content: center; align-items: center; height: 100vh;
+    }
+    #chat {
+      width: 400px; height: 600px;
+      display: flex; flex-direction: column;
+      border: 1px solid #444; border-radius: 12px;
+    }
+    #messages {
+      flex: 1; padding: 10px; overflow: auto;
+    }
+    .msg { margin: 4px 0; }
+    .user { color: #6bf; text-align: right; }
+    .bot { color: #6f6; text-align: left; }
+    #input { display: flex; }
+    #input input {
+      flex: 1; padding: 8px;
+      background: #222; border: none; color: #fff;
+    }
+    #input button {
+      background: #333; border: none;
+      color: #fff; padding: 8px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat">
+    <div id="messages"></div>
+    <div id="input">
+      <input id="userInput" placeholder="Say something...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <!-- Load TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  
+  <!-- Import our scripts -->
+  <script type="module">
+    import { buildModel, generateReply, loadVocab } from "./model.js";
+    import { saveChat } from "./firebase.js";
+
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("userInput");
+
+    let vocab = {};
+    let model;
+
+    async function init() {
+      vocab = await loadVocab("./vocab.json");
+      model = buildModel(Object.keys(vocab).length);
+    }
+    init();
+
+    function addMessage(text, who) {
+      const div = document.createElement("div");
+      div.className = "msg " + who;
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if(!text) return;
+      addMessage(text, "user");
+      input.value="";
+      const reply = await generateReply(model, vocab, text);
+      addMessage(reply, "bot");
+      await saveChat(text, reply);
+    }
+    window.sendMessage = sendMessage;
+  </script>
+</body>
+</html>
