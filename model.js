@@ -6,21 +6,12 @@ export async function loadVocab(url) {
   return await res.json();
 }
 
-export function buildModel(vocabSize, embedDim=64, numHeads=2) {
+export function buildModel(vocabSize, embedDim=64) {
   const input = tf.input({shape: [10]});
   const embed = tf.layers.embedding({ inputDim: vocabSize, outputDim: embedDim }).apply(input);
-
-  const query = tf.layers.dense({units: embedDim})(embed);
-  const key = tf.layers.dense({units: embedDim})(embed);
-  const value = tf.layers.dense({units: embedDim})(embed);
-  const scores = tf.layers.dot({axes: -1})([query, key]);
-  const weights = tf.layers.activation({activation: "softmax"}).apply(scores);
-  const context = tf.layers.dot({axes: [2,1]})([weights, value]);
-
-  const flat = tf.layers.flatten().apply(context);
+  const flat = tf.layers.flatten().apply(embed);
   const dense = tf.layers.dense({ units: 128, activation: "relu" }).apply(flat);
   const output = tf.layers.dense({ units: vocabSize, activation: "softmax" }).apply(dense);
-
   const model = tf.model({inputs: input, outputs: output});
   model.compile({ optimizer: "adam", loss: "sparseCategoricalCrossentropy" });
   return model;
@@ -32,8 +23,34 @@ export async function generateReply(model, vocab, inputText) {
   const xs = tf.tensor2d([tokens.slice(0,10)], [1,10]);
   const preds = model.predict(xs);
   const idx = preds.argMax(-1).dataSync()[0];
-  const word = Object.keys(vocab).find(k => vocab[k] === idx) || "…";
+  const word = Object.keys(vocab).find(k => vocab[k] === idx) || null;
+
+  // If neural net fails, fallback to web search
+  if (!word || word === "…") {
+    const crawl = await webSearch(inputText);
+    return crawl ? `XYLXX (web): ${crawl}` : "XYLXX: I don’t know.";
+  }
+
   return "XYLXX: " + word;
+}
+
+// Auto web search via DuckDuckGo proxy (Google blocks CORS)
+async function webSearch(query) {
+  try {
+    const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(url));
+    const data = await res.json();
+    const html = data.contents;
+
+    // Extract snippet text
+    const match = html.match(/<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/i);
+    if (match) {
+      return match[1].replace(/<[^>]+>/g, "");
+    }
+  } catch (e) {
+    console.error("Web search failed:", e);
+  }
+  return null;
 }
 
 export function rewardTrain(model, vocab, text, positive=true) {
