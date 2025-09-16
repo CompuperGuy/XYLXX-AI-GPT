@@ -9,10 +9,13 @@
   <div id="chat">
     <div id="messages"></div>
     <div id="input-bar">
-      <input id="userInput" type="text" placeholder="Message XYLXX GPT-1..." />
+      <input id="userInput" type="text" placeholder="Message XYLXX GPT-1..." autocomplete="off" />
       <button id="sendBtn">➤</button>
     </div>
   </div>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
   <script type="module">
     import { buildModel, generateReply, loadVocab, rewardTrain } from "./model.js";
@@ -25,12 +28,16 @@
     let vocab = {};
     let model;
 
+    // ✅ Boot model + vocab
     async function init() {
+      addMessage("Loading XYLXX GPT-1...", "bot");
       vocab = await loadVocab("./vocab.json");
       model = buildModel(Object.keys(vocab).length);
+      addMessage("✅ Model ready! Type something below.", "bot");
     }
     init();
 
+    // ✅ Handle send
     async function sendMessage() {
       const text = input.value.trim();
       if (!text) return;
@@ -38,13 +45,18 @@
 
       addMessage(text, "user");
 
-      const reply = await generateReply(model, vocab, text);
-      const msgId = Date.now().toString();
-      addMessage(reply, "bot", msgId);
-
-      await saveChat(text, reply, msgId);
+      try {
+        const reply = await generateReply(model, vocab, text);
+        const msgId = Date.now().toString();
+        addMessage(reply, "bot", msgId);
+        await saveChat(text, reply, msgId);
+      } catch (err) {
+        console.error(err);
+        addMessage("⚠️ Error: " + err.message, "bot");
+      }
     }
 
+    // ✅ Render message
     function addMessage(text, who, msgId = null) {
       const div = document.createElement("div");
       div.className = "msg " + who;
@@ -54,6 +66,7 @@
       bubble.textContent = text;
       div.appendChild(bubble);
 
+      // 👍👎 feedback
       if (who === "bot" && msgId) {
         const feedback = document.createElement("div");
         feedback.className = "feedback";
@@ -83,10 +96,13 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
-    // ✅ Hook Send Button + Enter Key
+    // ✅ Hook button + Enter
     sendBtn.addEventListener("click", sendMessage);
     input.addEventListener("keydown", e => {
-      if (e.key === "Enter") sendMessage();
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
     });
   </script>
 </body>
