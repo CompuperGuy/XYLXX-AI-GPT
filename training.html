@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>XYLXX Training</title><link rel="stylesheet" href="style.css"/></head>
+<body>
+  <div id="app" style="max-width:1100px;margin:24px auto;">
+    <h2>Training Console</h2>
+    <div id="list"></div>
+    <div style="margin-top:12px;">
+      <button id="batchPositive">Mark selected +</button>
+      <button id="batchNegative">Mark selected -</button>
+      <button id="refresh">Refresh</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initFirebase, fetchRecentChats, applyRewardToModel } from './training_helpers.js';
+    // training_helpers.js will implement Firestore fetch and apply the reward logic by loading model from indexeddb
+    (async ()=>{
+      await initFirebase();
+      // more UI behavior implemented in training_helpers.js
+      await fetchAndRender();
+      document.getElementById('refresh').addEventListener('click', fetchAndRender);
+    })();
+  </script>
+</body>
+</html>
