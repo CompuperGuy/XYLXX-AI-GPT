@@ -6,63 +6,83 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="chat-window">
-    <div id="messages"></div>
-    <div id="input-bar">
-      <textarea id="userInput" placeholder="Message XYLXX GPT-1..." rows="1"></textarea>
-      <button id="sendBtn">➤</button>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">XYLXX GPT-1</div>
+    </div>
+    <div class="chat">
+      <div class="messages" id="messages"></div>
+      <div class="composer">
+        <textarea id="inputBox" placeholder="Type a message..."></textarea>
+        <button id="sendBtn">➤</button>
+      </div>
     </div>
   </div>
 
-  <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script type="module">
-    import { buildModel, generateReply, loadVocab } from "./model.js";
+    import { buildModel, generateReply, loadVocab, rewardTrain } from './model.js';
+    import { saveChat, saveReward } from './firebase.js';
 
-    const messages = document.getElementById("messages");
-    const input = document.getElementById("userInput");
-    const sendBtn = document.getElementById("sendBtn");
+    const messages = document.getElementById('messages');
+    const inputBox = document.getElementById('inputBox');
+    const sendBtn = document.getElementById('sendBtn');
 
     let vocab = {};
     let model;
 
-    // ✅ Boot model
     async function init() {
-      addMessage("Loading XYLXX GPT-1...", "bot");
+      addMessage("Loading XYLXX GPT-1...", "sys");
       vocab = await loadVocab("./vocab.json");
       model = buildModel(Object.keys(vocab).length);
-      addMessage("✅ Ready! Type something below.", "bot");
+      addMessage("✅ Ready! Type a message.", "sys");
     }
     init();
 
-    // ✅ Send handler
     async function handleSend() {
-      const text = input.value.trim();
+      const text = inputBox.value.trim();
       if (!text) return;
-      input.value = "";
+      inputBox.value = "";
       addMessage(text, "user");
 
       try {
         const reply = await generateReply(model, vocab, text);
-        addMessage(reply, "bot");
+        const msgId = Date.now().toString();
+        addMessage(reply, "bot", msgId);
+        await saveChat(text, reply, msgId);
       } catch (err) {
         console.error(err);
-        addMessage("⚠️ Error: " + err.message, "bot");
+        addMessage("⚠️ Error: " + err.message, "sys");
       }
     }
 
-    // ✅ Add message bubble
-    function addMessage(text, who) {
-      const div = document.createElement("div");
+    function addMessage(text, who, msgId = null) {
+      const div = document.createElement('div');
       div.className = `msg ${who}`;
-      div.innerHTML = `<div class="bubble">${text}</div>`;
+
+      if(who === "bot") {
+        div.innerHTML = `<div class="botText">${text}</div>`;
+        if(msgId){
+          const feedback = document.createElement('div');
+          feedback.className = 'feedback';
+          const up = document.createElement('button');
+          up.className = 'vote'; up.textContent = '👍';
+          up.onclick = async () => { await saveReward(msgId,1); rewardTrain(model, vocab, text,true); feedback.style.display='none'; };
+          const down = document.createElement('button');
+          down.className = 'vote'; down.textContent = '👎';
+          down.onclick = async () => { await saveReward(msgId,-1); rewardTrain(model,vocab,text,false); feedback.style.display='none'; };
+          feedback.append(up,down);
+          div.appendChild(feedback);
+        }
+      } else {
+        div.textContent = text;
+      }
+
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
     }
 
-    // ✅ Hook send button + Enter
-    sendBtn.addEventListener("click", handleSend);
-    input.addEventListener("keydown", e => {
+    sendBtn.addEventListener('click', handleSend);
+    inputBox.addEventListener('keydown', e => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
