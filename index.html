@@ -1,25 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>XYLXX GPT-1</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="chat">
+  <div id="chat-window">
     <div id="messages"></div>
     <div id="input-bar">
-      <input id="userInput" type="text" placeholder="Message XYLXX GPT-1..." autocomplete="off" />
+      <textarea id="userInput" placeholder="Message XYLXX GPT-1..." rows="1"></textarea>
       <button id="sendBtn">➤</button>
     </div>
   </div>
 
   <!-- TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-
   <script type="module">
-    import { buildModel, generateReply, loadVocab, rewardTrain } from "./model.js";
-    import { saveChat, saveReward } from "./firebase.js";
+    import { buildModel, generateReply, loadVocab } from "./model.js";
 
     const messages = document.getElementById("messages");
     const input = document.getElementById("userInput");
@@ -28,80 +26,46 @@
     let vocab = {};
     let model;
 
-    // ✅ Boot model + vocab
+    // ✅ Boot model
     async function init() {
       addMessage("Loading XYLXX GPT-1...", "bot");
       vocab = await loadVocab("./vocab.json");
       model = buildModel(Object.keys(vocab).length);
-      addMessage("✅ Model ready! Type something below.", "bot");
+      addMessage("✅ Ready! Type something below.", "bot");
     }
     init();
 
-    // ✅ Handle send
-    async function sendMessage() {
+    // ✅ Send handler
+    async function handleSend() {
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
-
       addMessage(text, "user");
 
       try {
         const reply = await generateReply(model, vocab, text);
-        const msgId = Date.now().toString();
-        addMessage(reply, "bot", msgId);
-        await saveChat(text, reply, msgId);
+        addMessage(reply, "bot");
       } catch (err) {
         console.error(err);
         addMessage("⚠️ Error: " + err.message, "bot");
       }
     }
 
-    // ✅ Render message
-    function addMessage(text, who, msgId = null) {
+    // ✅ Add message bubble
+    function addMessage(text, who) {
       const div = document.createElement("div");
-      div.className = "msg " + who;
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = text;
-      div.appendChild(bubble);
-
-      // 👍👎 feedback
-      if (who === "bot" && msgId) {
-        const feedback = document.createElement("div");
-        feedback.className = "feedback";
-
-        const up = document.createElement("button");
-        up.textContent = "👍";
-        up.onclick = async () => {
-          await saveReward(msgId, 1);
-          rewardTrain(model, vocab, text, true);
-          feedback.style.display = "none";
-        };
-
-        const down = document.createElement("button");
-        down.textContent = "👎";
-        down.onclick = async () => {
-          await saveReward(msgId, -1);
-          rewardTrain(model, vocab, text, false);
-          feedback.style.display = "none";
-        };
-
-        feedback.appendChild(up);
-        feedback.appendChild(down);
-        div.appendChild(feedback);
-      }
-
+      div.className = `msg ${who}`;
+      div.innerHTML = `<div class="bubble">${text}</div>`;
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
     }
 
-    // ✅ Hook button + Enter
-    sendBtn.addEventListener("click", sendMessage);
+    // ✅ Hook send button + Enter
+    sendBtn.addEventListener("click", handleSend);
     input.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        handleSend();
       }
     });
   </script>
