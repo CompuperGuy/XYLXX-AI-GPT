@@ -1,177 +1,50 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>XYLXX GPT-1</title>
-<link rel="icon" href="data:," />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
+  <div id="app">
+    <aside class="sidebar">
       <div class="brand">XYLXX GPT-1</div>
-    </header>
+      <nav class="nav">
+        <a href="index.html" class="navlink active">Chat</a>
+        <a href="training.html" class="navlink">Training</a>
+      </nav>
+      <div class="small">Model runs locally in your browser. Web snippets blended automatically.</div>
+    </aside>
 
-    <main id="chat" class="chat">
-      <div id="messages" class="messages" aria-live="polite"></div>
+    <section class="main">
+      <header class="top">
+        <div class="title">XYLXX GPT-1</div>
+      </header>
 
-      <div class="composer">
-        <textarea id="inputBox" placeholder="Message XYLXX..." rows="1"></textarea>
-        <button id="sendBtn" aria-label="Send">Send</button>
-      </div>
-    </main>
+      <main id="viewport" class="viewport" role="main" aria-live="polite"></main>
+
+      <form id="composer" class="composer" onsubmit="return false;">
+        <textarea id="prompt" placeholder="Message XYLXX..." rows="1" autocomplete="off"></textarea>
+        <div class="controls">
+          <button id="send" title="Send (Enter)">Send</button>
+        </div>
+      </form>
+    </section>
   </div>
 
   <!-- TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
-  <!-- App (module) -->
+  <!-- App startup -->
   <script type="module">
-  import {
-    createModel, initModelFromIndexedDB, generateWithWebBlend, applyRewardUpdate,
-    supervisedTrainOnTexts, saveModelToIndexedDB
-  } from './model.js';
+  import * as ui from './ui.js';
+  import { initApp } from './app_boot.js';
 
-  import { initFirebase, saveChatEvent, saveRewardEvent, uploadModelToFirebase } from './firebase.js';
-
-  // DOM
-  const messagesEl = document.getElementById('messages');
-  const inputBox = document.getElementById('inputBox');
-  const sendBtn = document.getElementById('sendBtn');
-
-  // in-memory session store for rewards
-  const SESSIONS = {}; // turnId -> { promptTokens, sampledTokens }
-
-  let model = null;
-  let vocab = null;
-  let invVocab = null;
-  let initialized = false;
-
-  async function init(){
-    try{
-      await initFirebase(); // initialize Firestore & Storage
-      // load or create model; model.js will load vocab (vocab.json must exist)
-      const loaded = await initModelFromIndexedDB(); // returns {model, vocab, invVocab} or null
-      if(loaded){
-        model = loaded.model;
-        vocab = loaded.vocab;
-        invVocab = loaded.invVocab;
-      } else {
-        // create fresh
-        const created = await createModel(); // createModel loads vocab too
-        model = created.model;
-        vocab = created.vocab;
-        invVocab = created.invVocab;
-        // save empty initial model to IndexedDB
-        await saveModelToIndexedDB(model);
-      }
-      initialized = true;
-      appendSystem("XYLXX GPT-1 ready — running locally in your browser.");
-    }catch(e){
-      console.error("Init error", e);
-      appendSystem("Initialization failed. Check console.");
-    }
-  }
-  init();
-
-  function appendSystem(text){
-    const div = document.createElement('div'); div.className = 'msg sys'; div.textContent = text;
-    messagesEl.appendChild(div); messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function appendUser(text){
-    const div = document.createElement('div'); div.className = 'msg user'; div.textContent = text;
-    messagesEl.appendChild(div); messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function appendBot(text, turnId){
-    const div = document.createElement('div'); div.className = 'msg bot';
-    const inner = document.createElement('div'); inner.className='botText'; inner.textContent = text;
-    div.appendChild(inner);
-
-    // feedback row
-    const feedback = document.createElement('div'); feedback.className = 'feedback';
-    const thumbsUp = document.createElement('button'); thumbsUp.className='vote'; thumbsUp.textContent='👍';
-    const thumbsDown = document.createElement('button'); thumbsDown.className='vote'; thumbsDown.textContent='👎';
-
-    thumbsUp.onclick = async () => {
-      try{
-        await saveRewardEvent(turnId, 1);
-      }catch(e){ console.warn('save reward failed', e); }
-      await applyRewardUpdate(model, SESSIONS[turnId].promptTokens, SESSIONS[turnId].sampledTokens, +1);
-      feedback.remove();
-      appendSystem('Thanks — updated model with positive reward.');
-      await saveModelToIndexedDB(model);
-    };
-    thumbsDown.onclick = async () => {
-      try{
-        await saveRewardEvent(turnId, -1);
-      }catch(e){ console.warn('save reward failed', e); }
-      await applyRewardUpdate(model, SESSIONS[turnId].promptTokens, SESSIONS[turnId].sampledTokens, -1);
-      feedback.remove();
-      appendSystem('Thanks — updated model with negative reward.');
-      await saveModelToIndexedDB(model);
-    };
-
-    feedback.appendChild(thumbsUp); feedback.appendChild(thumbsDown);
-    div.appendChild(feedback);
-
-    messagesEl.appendChild(div); messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  // send logic
-  async function send(){
-    if(!initialized) return;
-    const text = inputBox.value.trim();
-    if(!text) return;
-    inputBox.value = '';
-    appendUser(text);
-
-    // generate with blend (AI + web) & record sampling
-    const { reply, promptTokens, sampledTokens, turnId } = await generateWithWebBlend(model, text);
-
-    // store session for reward
-    SESSIONS[turnId] = { promptTokens, sampledTokens };
-
-    appendBot(reply, turnId);
-
-    // save chat record
-    try{ await saveChatEvent({ user: text, bot: reply, turnId, ts: Date.now() }); } catch(e){ console.warn('save chat failed', e); }
-
-    // optionally schedule light supervised training on the web texts used by generator (model learns from crawl)
-    // model.js handles supervisedTrainOnTexts that can be invoked by admin or auto-run
-  }
-
-  // events
-  sendBtn.addEventListener('click', send);
-  inputBox.addEventListener('keydown', (e) => {
-    if(e.key === 'Enter' && !e.shiftKey){
-      e.preventDefault();
-      send();
-    }
-  });
-
-  // expose a tiny admin command to crawl and train on a query (silent)
-  window.xylxx = {
-    async crawlAndTrain(query, maxPages=3){
-      if(!initialized){ console.warn('not initialized'); return; }
-      appendSystem(`Crawling and training on "${query}" (this runs in your browser)`);
-      try{
-        const pages = await window.__crawlPagesForQuery(query, maxPages); // implemented in model.js
-        // pages = [{url, text}, ...]
-        await supervisedTrainOnTexts(model, pages.map(p=>p.text));
-        await saveModelToIndexedDB(model);
-        appendSystem(`Crawled ${pages.length} pages and performed supervised updates.`);
-      }catch(e){ console.error(e); appendSystem('Crawl/train failed. See console.'); }
-    },
-    async exportToFirebase(name='xylxx-model'){
-      try{
-        await uploadModelToFirebase(model, name);
-        appendSystem('Uploaded model artifacts to Firebase Storage.');
-      }catch(e){ console.warn(e); appendSystem('Upload failed. See console.'); }
-    }
-  };
+  // boot app: loads model, vocab, firebase, wires UI
+  (async function(){
+    await initApp({ viewportEl: document.getElementById('viewport'), promptEl: document.getElementById('prompt'), sendBtn: document.getElementById('send') });
+  })();
   </script>
 </body>
 </html>
