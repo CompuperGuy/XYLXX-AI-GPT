@@ -1,7 +1,5 @@
-// firebase.js (modular client SDK)
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyALx3RDkGf27Nv-mcatszH8Dx5wuPA1jF0",
@@ -13,33 +11,13 @@ const firebaseConfig = {
   measurementId: "G-120MFDQRNJ"
 };
 
-let db=null, storage=null;
-export async function initFirebase(){
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+export async function saveChat(user, bot, id) {
+  await addDoc(collection(db, "chats"), { user, bot, id, ts: Date.now() });
 }
 
-/* save chat entry */
-export async function saveChatEvent(obj){
-  if(!db) return;
-  try{ await addDoc(collection(db, 'chats'), { user: obj.user, bot: obj.bot, turnId: obj.turnId, ts: obj.ts || Date.now() }); }
-  catch(e){ console.warn('saveChatEvent', e); }
-}
-
-/* save reward event */
-export async function saveRewardEvent(turnId, reward){
-  if(!db) return;
-  try{ await addDoc(collection(db, 'rewards'), { turnId, reward, ts: Date.now() }); }
-  catch(e){ console.warn('saveRewardEvent', e); }
-}
-
-/* helper used by model.js to upload weights */
-export async function uploadModelArtifactsToFirebase(path, blob){
-  if(!storage) throw new Error('Storage not initialized');
-  try{
-    const r = ref(storage, path);
-    await uploadBytes(r, blob);
-    return true;
-  }catch(e){ console.warn('uploadModelArtifactsToFirebase', e); throw e; }
+export async function saveReward(id, score) {
+  await addDoc(collection(db, "rewards"), { id, score, ts: Date.now() });
 }
